@@ -29,11 +29,10 @@ The overall process will be like this:
 #### Start the server by `npm install` and `npm start`
 
 ```
-
 $ git clone https://github.com/Choi-Heesu/mediaRecorder-dataChannel-mediaSource.git
+
 $ npm install
 $ npm start
-
 ```
 
 #### open http://localhost:8080 in broswer
