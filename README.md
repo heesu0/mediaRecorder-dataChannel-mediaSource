@@ -3,13 +3,16 @@
 
 ## Goal
 
+
 We try to test whether we can reduce latency by performing encoding and decoding independently, away from the encode-decode pipeline used in conventional WebRTC live video chat.
 
 MediaRecorder was used for encoding and MediaSource was used for decoding.
 
 Both data channel and web socket could transmit encoding media data, but the web socket had a latency problem with TCP-based protocols, so we used SCTP-based data channel.
 
+
 ## Description
+
 
 Browser to browser live video chat test using WebRTC data channel. 
 The encoding process used `mediaRecorder`, the decoding process used `mediaSource`, and the transfer process used `dataChannel`.
@@ -26,6 +29,7 @@ The overall process will be like this:
 
 ## Usage
 
+
 #### Start the server by `npm install` and `npm start`
 
 ```
@@ -36,3 +40,4 @@ $ npm start
 ```
 
 #### open http://localhost:8080 in broswer
+
