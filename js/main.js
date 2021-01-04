@@ -1,23 +1,22 @@
 'use strict';
 
-/****************************************************************************
-* Initial setup
-****************************************************************************/
+/******************************************************
+ * Initial setup
+ ******************************************************/
 
+const configuration = null;
 /*const configuration = {
    'iceServers': [{
      'urls': 'stun:stun.l.google.com:19302'
    }]
 };*/
-
-const configuration = null;
-
-// const roomURL = document.getElementById('url');
 const mediaSource = new MediaSource();
 const localVideo = document.querySelector('video#localVideo');
 const remoteVideo = document.querySelector('video#remoteVideo');
 const streamingBtn = document.querySelector('button#streamingBtn');
-const delayQueue = [];
+const callbackQueue = [];
+
+// Options that work similarly to udp (i'm not sure if it works)
 const dataConstraint = {
     ordered: false,
     maxRetransmits: 0
@@ -25,7 +24,7 @@ const dataConstraint = {
 
 let sourceBuffer;
 let mediaRecorder;
-let isInitiator; // isInitiator is the one who's creating the room
+let isInitiator; 
 let room = window.location.hash.substring(1);
 
 streamingBtn.onclick = toggleStreaming;
@@ -36,9 +35,9 @@ if (!room) {
     room = window.location.hash = prompt('Enter a room name:');
 }
 
-/****************************************************************************
-* Signaling server
-****************************************************************************/
+/******************************************************
+ * Signaling server
+ ******************************************************/
 
 // Connect to the signaling server
 const socket = io.connect();
@@ -47,7 +46,7 @@ const socket = io.connect();
 if (room !== '') {
     socket.emit('create or join', room);
     console.log('Attempted to create or join room', room);
-} 
+}
 else { // Create a random room if room is empty 
     room = window.location.hash = randomToken();
     alert('Room name is empty! We will create a new room for you : ', room);
@@ -61,7 +60,7 @@ socket.on('created', function (room, clientId) {
 socket.on('joined', function (room, clientId) {
     console.log('This peer has joined room', room, 'with client ID', clientId);
     isInitiator = false;
-    // why? ready create peerConnection
+    // Why? 'ready' create peerConnection
     // createPeerConnection(isInitiator, configuration);
 });
 
@@ -74,6 +73,10 @@ socket.on('full', function (room) {
 socket.on('ready', function () {
     console.log('Socket is ready');
     createPeerConnection(isInitiator, configuration);
+});
+
+socket.on('play', function () {
+    remoteVideo.play();
 });
 
 socket.on('log', function (array) {
@@ -108,39 +111,25 @@ window.addEventListener('unload', function () {
 // Send message to signaling server
 function sendMessage(message) {
     console.log('Client sending message: ', message);
-    socket.emit('message', message);
+    socket.emit('message', message, room);
 }
 
-/**
-* Updates URL on the page so that users can copy&paste it to their peers.
-*/
-// function updateRoomURL(ipaddr) {
-//   let url;
-//   if (!ipaddr) {
-//     url = location.href;
-//   } else {
-//     url = location.protocol + '//' + ipaddr + ':2013/#' + room;
-//   }
-//   roomURL.innerHTML = url;
-// }
-
-/****************************************************************************
-* User media (webcam)
-****************************************************************************/
-console.log('Getting user media (video) ...');
+/******************************************************
+ * Media part (getUserMedia, mediaSource)
+ ******************************************************/
 
 navigator.mediaDevices.getUserMedia({
-    audio: false,
+    audio: true,
     video: true
 })
-    .then(gotStream)
-    .catch(function (e) {
-        alert('getUserMedia() error: ' + e.name);
-    });
+.then(gotStream)
+.catch(function (e) {
+    alert('getUserMedia() error: ' + e.name);
+});
 
 function gotStream(stream) {
-    //console.log('getUserMedia video stream URL:', stream);
-    window.stream = stream; // stream available to console
+    console.log('getUserMedia video stream URL:', stream);
+    window.stream = stream;
     localVideo.srcObject = stream;
 }
 
@@ -148,42 +137,45 @@ let isMediaInit = false;
 
 mediaSource.addEventListener('sourceopen', function (e) {
     //const mimeCodec = 'video/mp4; codecs="avc1.42E01E, opus"';
-    const mimeCodec = 'video/webm; codecs="vp8"';
+    const mimeCodec = 'video/webm; codecs="vp8, opus"';
     sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
-    sourceBuffer.mode = 'segments';
+    sourceBuffer.mode = 'segments'; // 
     sourceBuffer.addEventListener('updateend', function () {
-        if (isMediaInit) {
-            console.log('currentTime : ', remoteVideo.currentTime);
-            //console.log('buffered : ', sourceBuffer.buffered.end(0));
-            const ranges = sourceBuffer.buffered;
-            for (let i = 0, len = ranges.length; i < len; i += 1) {
-                console.log("RANGE: " + ranges.start(i) + " - " + ranges.end(i));
-            }
-            if (sourceBuffer.buffered.end(0) - remoteVideo.currentTime > 1) {
-                remoteVideo.currentTime = sourceBuffer.buffered.end(0);
-                console.log("Update CurrentTime!!!!");
-            }
-        } else isMediaInit = true;
 
-        if (delayQueue.length > 0 && !sourceBuffer.updating) {
-            sourceBuffer.appendBuffer(delayQueue.shift());
-            console.log('delay Buffer fixed');
+        // Update if currentTime is slower than 1 second from the time currently buffered in sourceBuffer
+        if (isMediaInit) {
+            const ranges = sourceBuffer.buffered;
+            const bufferLength = ranges.length;
+            if (bufferLength != 0) {
+                if (sourceBuffer.buffered.end(0) - remoteVideo.currentTime > 1) {
+                    remoteVideo.currentTime = sourceBuffer.buffered.end(0);
+                    console.log("Update currentTime!!!!");
+                }
+            }
+        } else {
+            isMediaInit = true;
+        }
+
+        // Append buffer to sourceBuffer if sourceBuffer is not updating 
+        if (callbackQueue.length > 0 && !sourceBuffer.updating) {
+            sourceBuffer.appendBuffer(callbackQueue.shift());
+            console.log('Delayed buffer fix');
         }
     });
 }, false);
 
 remoteVideo.src = window.URL.createObjectURL(mediaSource);
 
-/****************************************************************************
-* WebRTC peer connection and data channel
-****************************************************************************/
+ /******************************************************
+ * WebRTC peer connection and data channel
+ ******************************************************/
 
 let peerConn;
 let dataChannel;
 
 function signalingMessageCallback(message) {
     if (message == null) return;
-    console.log('?????????????????????????????????????????');
+
     if (message.type === 'offer') {
         console.log('Got offer. Sending answer to peer.');
         peerConn.setRemoteDescription(new RTCSessionDescription(message), function () { },
@@ -208,7 +200,7 @@ function createPeerConnection(isInitiator, config) {
         config);
     peerConn = new RTCPeerConnection(config);
 
-    // send any ice candidates to the other peer
+    // Send any ice candidates to the other peer
     peerConn.onicecandidate = function (event) {
         //console.log('send ice candidates to the other peer ', event);
         //console.log('icecandidate event:', event);
@@ -233,12 +225,12 @@ function createPeerConnection(isInitiator, config) {
         peerConn.createOffer().then(function (offer) {
             return peerConn.setLocalDescription(offer);
         })
-            .then(() => {
-                console.log('sending local desc 1');
-                //console.log('sending local desc:', peerConn.localDescription);
-                sendMessage(peerConn.localDescription);
-            })
-            .catch(logError);
+        .then(() => {
+            console.log('sending local desc 1');
+            //console.log('sending local desc:', peerConn.localDescription);
+            sendMessage(peerConn.localDescription);
+        })
+        .catch(logError);
 
     } else {
         peerConn.ondatachannel = function (event) {
@@ -276,30 +268,27 @@ function onDataChannelCreated(channel) {
 }
 
 function onReceiveMessageCallback(event) {
-    //console.log(mediaSource.readyState);
     if (mediaSource.readyState == 'open') {
         const arrayBuffer = new Uint8Array(event.data);
-        //console.log(arrayBuffer);
-        if (!sourceBuffer.updating && delayQueue.length == 0) {
+        if (!sourceBuffer.updating && callbackQueue.length == 0) {
             sourceBuffer.appendBuffer(arrayBuffer);
         } else {
-            delayQueue.push(arrayBuffer);
+            callbackQueue.push(arrayBuffer);
         }
     }
 }
 
-async function handleDataAvailable(event) {
-    if (event.data && event.data.size > 0) {
-        // dataChannel.send(buffer), data gets received by using event.data
-        // Sending a blob through RTCPeerConnection is not supported. Must use an ArrayBuffer?
-        const buffer = await event.data.arrayBuffer();
-        dataChannel.send(buffer);
+function logError(err) {
+    if (!err) return;
+    if (typeof err === 'string') {
+        console.warn(err);
+    } else {
+        console.warn(err.toString(), err);
     }
 }
-
-function handleStop(event) {
-    console.log('Recorder stopped: ', event);
-}
+ /******************************************************
+ * Streaming(Recording) part
+ ******************************************************/
 
 function toggleStreaming() {
     if (streamingBtn.textContent === 'Start Streaming') {
@@ -312,13 +301,13 @@ function toggleStreaming() {
 
 function startStreaming() {
     // let options = { mimeType: 'video/webm; codecs="h264, opus"' };
-    let options = { mimeType: 'video/webm; codecs="vp8' };
+    let options = { mimeType: 'video/webm; codecs="vp8, opus"' };
     try {
         mediaRecorder = new MediaRecorder(window.stream, options);
     } catch (e0) {
         console.log('Unable to createm MediaRecorder with options Object: ', e0);
         try {
-            options = { mimeType: 'video/webm,codecs=vp8', bitsPerSecond: 100000 };
+            options = { mimeType: 'video/webm,codecs=vp8'};
             mediaRecorder = new MediaRecorder(window.stream, options);
         } catch (e1) {
             console.log('Unable to create MediaRecorder with options Object: ', e1);
@@ -337,23 +326,31 @@ function startStreaming() {
     streamingBtn.textContent = 'Stop Streaming';
     mediaRecorder.onstop = handleStop;
     mediaRecorder.ondataavailable = handleDataAvailable;
-    mediaRecorder.start(1); // time slice 10ms
+    mediaRecorder.start(1); // time slice 1ms
+    socket.emit('streaming', room);
     console.log('MediaRecorder started', mediaRecorder);
+}
+
+async function handleDataAvailable(event) {
+    if (event.data && event.data.size > 0) {
+        // Sending a blob data through RTCPeerConnection is not supported. why?
+        const buffer = await event.data.arrayBuffer();
+        dataChannel.send(buffer);
+    }
+}
+
+function handleStop(event) {
+    console.log('Recorder stopped: ', event);
 }
 
 function stopStreaming() {
     mediaRecorder.stop();
 }
 
+ /******************************************************
+ * Etc function
+ ******************************************************/
+
 function randomToken() {
     return Math.floor((1 + Math.random()) * 1e16).toString(16).substring(1);
-}
-
-function logError(err) {
-    if (!err) return;
-    if (typeof err === 'string') {
-        console.warn(err);
-    } else {
-        console.warn(err.toString(), err);
-    }
 }
