@@ -8,7 +8,7 @@ We try to test whether we can reduce latency by performing encoding and decoding
 
 MediaRecorder was used for encoding and MediaSource was used for decoding.
 
-Both data channel and web socket could transmit encoding media data, but the web socket had a latency problem with TCP-based protocols, so we used SCTP-based data channel.
+Both data channel and web socket could transmit encoded media data, but the web socket had a latency problem with TCP-based protocols, so we used SCTP-based data channel.
 
 
 ## Description
