@@ -2,7 +2,9 @@
 
 const express = require('express');
 const app = express();
-const server = require('http').createServer(app).listen(8080);
+const server = require('http').createServer(app).listen(8080, function () {
+    console.log("Open http://localhost:8080 in broswer");
+});
 const io = require('socket.io').listen(server);
 const path = require('path');
 
