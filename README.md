@@ -33,7 +33,7 @@ The overall process will be like this:
 #### Start the server by `npm install` and `npm start`
 
 ```
-$ git clone https://github.com/Choi-Heesu/mediaRecorder-dataChannel-mediaSource.git
+$ git clone https://github.com/heesu0/mediaRecorder-dataChannel-mediaSource.git
 
 $ npm install
 $ npm start
